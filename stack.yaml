@@ -9,3 +9,7 @@ allow-newer: true
 
 extra-deps:
 - repa-3.4.1.3
+- git: https://github.com/fpco/inline-c.git
+  commit: b368191e387e7e857c222f96670311ad7a9e3e7a
+  subdirs:
+    - inline-c

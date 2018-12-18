@@ -69,7 +69,7 @@ module OpenCV.Internal.Core.Types.Mat
     , ToDepthDS(toDepthDS)
     ) where
 
-import "base" Control.Exception ( throwIO )
+import "base" Control.Exception ( throwIO, mask_ )
 import "base" Control.Monad.ST ( ST )
 import "base" Data.Int
 import "base" Data.Maybe
@@ -77,7 +77,7 @@ import "base" Data.Monoid ( (<>) )
 import "base" Data.Proxy
 import "base" Data.Word
 import "base" Foreign.C.Types
-import "base" Foreign.ForeignPtr ( ForeignPtr, withForeignPtr, touchForeignPtr )
+import "base" Foreign.ForeignPtr ( ForeignPtr, withForeignPtr, touchForeignPtr, newForeignPtr )
 import "base" Foreign.Marshal.Alloc ( alloca )
 import "base" Foreign.Marshal.Array ( allocaArray, peekArray )
 import "base" Foreign.Ptr ( Ptr, plusPtr )
@@ -127,8 +127,13 @@ instance WithPtr (Mat shape channels depth) where
     withPtr = withForeignPtr . unMat
 
 instance FromPtr (Mat shape channels depth) where
-    fromPtr = objFromPtr Mat $ \ptr ->
-                [CU.exp| void { delete $(Mat * ptr) }|]
+    fromPtr iop = mask_ $ do
+      objPtr <- iop :: IO (Ptr C'Mat)
+      let c_finalizer_funPtr =
+            [C.funPtr| void haskell_opencv_free_mat(Mat * ptr) {
+              delete ptr;
+            }|]
+      Mat <$> newForeignPtr c_finalizer_funPtr objPtr
 
 instance FreezeThaw (Mat shape channels depth) where
     freeze = cloneMatM . unMut
