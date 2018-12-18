@@ -27,6 +27,7 @@ module OpenCV.Internal.Core.Types.Mat
     , keepMatAliveDuring
     , newEmptyMat
     , newMat
+    , withMat
     , withMatData
     , matElemAddress
     , mkMat
@@ -40,6 +41,7 @@ module OpenCV.Internal.Core.Types.Mat
 
     , mkMatM
     , createMat
+    , unsafeFinalizeMat
     , withMatM
     , cloneMatM
     , deallocateMatM
@@ -69,15 +71,17 @@ module OpenCV.Internal.Core.Types.Mat
     , ToDepthDS(toDepthDS)
     ) where
 
-import "base" Control.Exception ( throwIO, mask_ )
+import "base" Control.Exception ( throwIO, mask_, bracket )
+import "base" Control.Monad.IO.Class ( liftIO )
 import "base" Control.Monad.ST ( ST )
 import "base" Data.Int
 import "base" Data.Maybe
 import "base" Data.Monoid ( (<>) )
 import "base" Data.Proxy
+import "base" Data.Traversable ( for )
 import "base" Data.Word
 import "base" Foreign.C.Types
-import "base" Foreign.ForeignPtr ( ForeignPtr, withForeignPtr, touchForeignPtr, newForeignPtr )
+import "base" Foreign.ForeignPtr ( ForeignPtr, withForeignPtr, touchForeignPtr, newForeignPtr, finalizeForeignPtr )
 import "base" Foreign.Marshal.Alloc ( alloca )
 import "base" Foreign.Marshal.Array ( allocaArray, peekArray )
 import "base" Foreign.Ptr ( Ptr, plusPtr )
@@ -307,6 +311,48 @@ newMat shape channels depth defValue = ExceptT $ do
     shape'    = toShape shape
     channels' = toChannels channels
     depth'    = toDepth depth
+
+-- | Frees the data underlying the Mat.
+--
+-- Only use it if you can guarantee that the Mat isn't used
+-- afterwards!
+unsafeFinalizeMat
+    :: Mat shape channels depth -- ^ The matrix to be finalised.
+    -> IO ()
+unsafeFinalizeMat mat = do
+  finalizeForeignPtr (unMat mat)
+
+-- | Like `newMat`, but provides scoped access to the matrix
+-- and it's guaranteed to be freed when this function returns.
+--
+-- Use this instead of `newMat` where you can (where the matrix
+-- needs only lexically scocped life time).
+--
+-- Thus you must not return the matrix outside of the scope.
+withMat
+    :: ( ToShape    shape
+       , ToChannels channels
+       , ToDepth    depth
+       , ToScalar   scalar
+       -- , MinLengthDS 2 shape
+       -- , 1 .<=? channels
+       -- , channels .<=? 512
+       -- , 2 <= Length shape
+       -- , 1 <= channels
+       -- , channels <= 512
+       )
+    => shape -- ^
+    -> channels
+    -> depth
+    -> scalar
+    -> (Mat (ShapeT shape) (ChannelsT channels) (DepthT depth) -> IO a)
+    -> CvExceptT IO a
+withMat shape channels depth defValue action =
+  ExceptT $ liftIO $ do
+    bracket
+      (runExceptT $ newMat shape channels depth defValue)
+      (\eMat -> for eMat $ \mat -> unsafeFinalizeMat mat) -- free Mat promptly
+      (\eMat -> for eMat $ \mat -> action mat)
 
 -- TODO (BvD): Move to some Utility module.
 withVector
