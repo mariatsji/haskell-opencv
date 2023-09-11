@@ -68,8 +68,6 @@ module OpenCV.Core.Types.Mat
 
     , ValidDimensions
     , ValidDimensions'
-    , ValidChannels
-    , ValidChannels'
     ) where
 
 import "base" Data.Kind ( Type )

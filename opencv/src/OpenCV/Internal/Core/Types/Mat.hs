@@ -81,8 +81,6 @@ module OpenCV.Internal.Core.Types.Mat
 
     , ValidDimensions
     , ValidDimensions'
-    , ValidChannels
-    , ValidChannels'
     ) where
 
 import "base" Data.Kind ( Type )
@@ -926,27 +924,12 @@ instance ToChannels Int32 where
     toChannels = id
 
 -- | type level: reify the known natural number @n@
-instance (KnownNat n, ValidChannels n) => ToChannels (proxy n) where
+instance (KnownNat n) => ToChannels (proxy n) where
     toChannels = fromInteger . natVal
 
 -- | strip away 'S'
 instance (ToChannels (Proxy n)) => ToChannels (proxy ('S n)) where
     toChannels _proxy = toChannels (Proxy :: Proxy n)
-
---------------------------------------------------------------------------------
-
--- | Constraint which expresses a valid number of channels for a
--- 'Mat'.
---
--- Number of channels must be [1..512].
-type ValidChannels channels = ValidChannels' channels (CmpNat channels 513)
-
--- | 'ValidChannels' helper which produces custom type errors.
-type family ValidChannels' (channels :: Nat) (cmpMax :: Ordering) :: Constraint where
-    ValidChannels' 0 _ = TypeError ('Text "Mat must have at least 1 channel")
-    ValidChannels' _ 'LT = ()
-    ValidChannels' n _ =
-        TypeError ('Text "Mat has too many channels: " ':<>: 'ShowType n ':<>: 'Text " > 512")
 
 --------------------------------------------------------------------------------
 
